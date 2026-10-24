@@ -149,11 +149,15 @@ async function load(){
       try{ localStorage.setItem('sosp_csv', text); localStorage.setItem('sosp_ts', String(Date.now())); }catch(e){}
     }catch(e){
       text=null;
+      const m = (e && e.message) || '';
+      meta.reason = /^HTTP /.test(m) ? 'il foglio ha risposto con errore ('+m+')'
+        : (e instanceof TypeError || /fetch|network|load failed/i.test(m)) ? 'connessione assente o link non raggiungibile'
+        : m;
       try{
         const c = localStorage.getItem('sosp_csv');
         if(c){ text=c; meta.stale=true; meta.cachedAt=new Date(+localStorage.getItem('sosp_ts')); }
       }catch(e2){}
-      if(!text) meta.error = 'Elenco non raggiungibile e nessuna copia salvata.';
+      if(!text) meta.error = 'Elenco non leggibile e nessuna copia salvata ('+meta.reason+').';
     }
   } else { text = SAMPLE_CSV; meta.sample = true; }
   if(text){ try{ rows = buildRows(text); }catch(e){ meta.error = 'Elenco non leggibile: '+e.message; } }
@@ -174,7 +178,7 @@ function banners(){
   let h='';
   if(meta.error) return '<div class="banner b-err"><b>ATTENZIONE.</b> '+esc(meta.error)+' Non usare questo strumento: consulta l\'elenco ufficiale.</div>';
   if(meta.sample) h+='<div class="banner b-err"><b>DATI DI PROVA.</b> Non collegato al foglio. Non usare per decisioni reali.</div>';
-  if(meta.stale) h+='<div class="banner b-warn"><b>Offline.</b> Mostro la copia salvata il '+esc(fmt(meta.cachedAt))+'. Potrebbe essere superata.</div>';
+  if(meta.stale) h+='<div class="banner b-warn"><b>Foglio non letto</b> ('+esc(meta.reason||'motivo sconosciuto')+'). Mostro la copia salvata il '+esc(fmt(meta.cachedAt))+', che potrebbe essere superata.</div>';
   if(meta.updated){
     const days = Math.floor((today0()-meta.updated)/864e5);
     if(days > STALE_DAYS) h+='<div class="banner b-warn"><b>Elenco fermo da '+days+' giorni</b> (aggiornato al '+esc(fmt(meta.updated))+'). Verifica che sia ancora valido.</div>';
