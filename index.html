@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sospensioni">
+<meta name="theme-color" content="#f2f2f7">
+<title>Sospensioni donatori</title>
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--text:#111;--muted:#6b6b72;--accent:#0a64d6;--red:#c62828;--redbg:#fdecec;--green:#1b7a3a;--greenbg:#e8f6ec;--amber:#8a5a00;--amberbg:#fff3d6;--line:#d9d9de}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--text:#f2f2f7;--muted:#98989f;--accent:#4c9dff;--red:#ff6b6b;--redbg:#3a1a1a;--green:#5fd37f;--greenbg:#12301c;--amber:#ffc55c;--amberbg:#3a2d10;--line:#3a3a3c}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:17px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+#app{max-width:560px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 14px max(28px,env(safe-area-inset-bottom))}
+h1{font-size:15px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin:6px 2px 10px}
+h2{font-size:26px;line-height:1.15;margin:14px 2px 6px}
+.sub{color:var(--muted);margin:0 2px 14px;font-size:15px}
+.banner{border-radius:12px;padding:10px 12px;margin:0 0 10px;font-size:14px}
+.b-ok{background:var(--card);color:var(--muted);border:1px solid var(--line)}
+.b-warn{background:var(--amberbg);color:var(--amber)}
+.b-err{background:var(--redbg);color:var(--red)}
+.opt{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:58px;margin:0 0 9px;padding:12px 16px;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:14px;font:inherit;font-size:19px;font-weight:600;text-align:left}
+.opt small{font-weight:400;color:var(--muted);font-size:14px;margin-left:10px;text-align:right}
+.opt:active{background:var(--line)}
+.opt.ghost{font-weight:500;color:var(--muted);background:transparent;border-style:dashed}
+.q{width:100%;min-height:50px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:inherit;font-size:17px}
+.nav{display:flex;justify-content:space-between;margin:2px 0 4px}
+.link{background:none;border:0;color:var(--accent);font:inherit;font-size:17px;padding:10px 4px;min-height:44px}
+.res{border-radius:18px;padding:20px 18px;margin:10px 0 14px}
+.res.red{background:var(--redbg);color:var(--red)}
+.res.green{background:var(--greenbg);color:var(--green)}
+.res .big{font-size:30px;line-height:1.1;font-weight:800;margin:0 0 8px}
+.res .area{font-size:19px;font-weight:600;margin:0 0 6px;color:var(--text)}
+.res p{margin:4px 0;color:var(--text);font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 12px}
+.card label{display:block;font-weight:600;margin-bottom:8px}
+.card input[type=date]{width:100%;min-height:46px;font:inherit;font-size:17px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.out{margin-top:10px;font-size:16px}
+.foot{color:var(--muted);font-size:13px;margin:14px 2px 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ====== CONFIGURAZIONE ======
+// Incolla qui il link CSV di Google Fogli ("Pubblica sul web" > CSV).
+// Se resta vuoto, l'app usa i dati di prova incorporati e lo dichiara in cima a ogni schermata.
+const SHEET_CSV_URL = "";
+const GIORNI = 28;
+const STALE_DAYS = 14; // oltre questa soglia l'elenco viene segnalato come non aggiornato
+
+const SAMPLE_CSV = `Nazione,Provincia,Comune,Attiva dal,Fino al,Aggiornato al
+Italia,Lecce,Alliste,2026-08-28,,2026-10-24
+Italia,Lecce,Ugento,2026-08-28,,
+Italia,Lecce,Taurisano,2026-10-09,,
+Italia,Livorno,Piombino,2026-08-31,,
+Italia,Roma,Roma,2026-09-04,,
+Italia,Napoli,Ischia,2026-09-21,,
+Italia,Firenze,Campi Bisenzio,2026-09-21,,
+Italia,Firenze,Signa,2026-09-21,,
+Italia,Vicenza,Cartigliano,2026-09-25,,
+Francia,Lot,,2026-08-28,,
+Francia,Val della marna,,2026-08-28,,
+Francia,Marsiglia,,2026-08-28,,
+Francia,Landes,,2026-10-23,,
+Francia,Pirenei atlantici,,2026-10-23,,
+Francia,Var,,2026-10-23,,`;
+
+// ====== UTILITÀ ======
+const $app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const key = s => String(s||'').trim().toLowerCase();
+const MESI = {gen:0,feb:1,mar:2,apr:3,mag:4,giu:5,lug:6,ago:7,set:8,ott:9,nov:10,dic:11};
+const today0 = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const fmt = d => d.toLocaleDateString('it-IT', {day:'numeric', month:'short', year:'numeric'});
+
+function parseDate(s){
+  s = (s||'').trim(); if(!s) return null; let m;
+  if(m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)) return new Date(+m[1], m[2]-1, +m[3]);
+  if(m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/)){ let y=+m[3]; if(y<100) y+=2000; return new Date(y, m[2]-1, +m[1]); }
+  if(m = s.toLowerCase().match(/^(\d{1,2})\s+([a-zà]+)\.?(?:\s+(\d{4}))?$/)){
+    const mo = MESI[m[2].slice(0,3)];
+    if(mo !== undefined) return new Date(m[3] ? +m[3] : new Date().getFullYear(), mo, +m[1]);
+  }
+  return undefined; // testo presente ma non interpretabile
+}
+
+function parseCSV(t){
+  const out=[]; let r=[], f='', q=false;
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){ if(c=='"'){ if(t[i+1]=='"'){f+='"';i++} else q=false } else f+=c }
+    else if(c=='"') q=true;
+    else if(c==','){ r.push(f); f='' }
+    else if(c=='\n'){ r.push(f); out.push(r); r=[]; f='' }
+    else if(c!='\r') f+=c;
+  }
+  if(f!==''||r.length){ r.push(f); out.push(r) }
+  return out;
+}
+
+// ====== DATI ======
+let rows=[], meta={sample:false, stale:false, cachedAt:null, updated:null, skipped:[], error:null};
+
+function buildRows(text){
+  if(/^\s*</.test(text)) throw new Error('Il link non restituisce un CSV (foglio non pubblicato?)');
+  const t = parseCSV(text).filter(r => r.some(c => c.trim()));
+  if(t.length < 2) throw new Error('Foglio vuoto');
+  const h = t[0].map(key);
+  const ix = p => h.findIndex(x => x.startsWith(p));
+  const I = {n:ix('nazion'), p:ix('provinc'), c:ix('comun'), da:ix('attiva'), a:ix('fino'), u:ix('aggiornat')};
+  if(I.n<0||I.p<0||I.c<0||I.da<0) throw new Error('Intestazioni mancanti: servono Nazione, Provincia, Comune, Attiva dal');
+  const out=[]; meta.skipped=[]; meta.updated=null;
+  t.slice(1).forEach((r,i) => {
+    const g = k => (k>=0 ? (r[k]||'').trim() : '');
+    const n=g(I.n), p=g(I.p), c=g(I.c);
+    if(I.u>=0 && !meta.updated){ const u=parseDate(g(I.u)); if(u) meta.updated=u; }
+    if(!n && !p && !c) return;
+    const da=parseDate(g(I.da)), a=parseDate(g(I.a));
+    if(!n || !p || da===undefined || a===undefined){
+      meta.skipped.push('riga '+(i+2)+(p?' ('+p+(c?' / '+c:'')+')':'')+(!n?': Nazione mancante':': data non valida'));
+      return;
+    }
+    out.push({nazione:n, provincia:p, comune:c==='-'?'':c, da, a});
+  });
+  return out;
+}
+
+async function load(){
+  let text=null;
+  if(SHEET_CSV_URL){
+    try{
+      const url = SHEET_CSV_URL + (SHEET_CSV_URL.includes('?')?'&':'?') + 't=' + Date.now();
+      const r = await fetch(url, {cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      text = await r.text();
+      buildRows(text); // valida prima di salvare
+      try{ localStorage.setItem('sosp_csv', text); localStorage.setItem('sosp_ts', String(Date.now())); }catch(e){}
+    }catch(e){
+      text=null;
+      try{
+        const c = localStorage.getItem('sosp_csv');
+        if(c){ text=c; meta.stale=true; meta.cachedAt=new Date(+localStorage.getItem('sosp_ts')); }
+      }catch(e2){}
+      if(!text) meta.error = 'Elenco non raggiungibile e nessuna copia salvata.';
+    }
+  } else { text = SAMPLE_CSV; meta.sample = true; }
+  if(text){ try{ rows = buildRows(text); }catch(e){ meta.error = 'Elenco non leggibile: '+e.message; } }
+}
+
+const active = () => { const t=today0(); return rows.filter(r => !(r.a && r.a < t)); };
+const uniq = arr => { const s=new Set(), o=[]; arr.forEach(x=>{ if(!s.has(key(x))){ s.add(key(x)); o.push(x);} }); return o; };
+
+// ====== STATO / NAVIGAZIONE ======
+const init = () => ({step:'nation', nazione:null, provincia:null, res:null, stay:''});
+let st = init(), stack = [];
+function nav(patch){ stack.push(JSON.stringify(st)); Object.assign(st, patch); render(); window.scrollTo(0,0); }
+function back(){ if(stack.length){ st = JSON.parse(stack.pop()); render(); } }
+function reset(){ stack=[]; st=init(); render(); window.scrollTo(0,0); }
+
+// ====== SCHERMATE ======
+function banners(){
+  let h='';
+  if(meta.error) return '<div class="banner b-err"><b>ATTENZIONE.</b> '+esc(meta.error)+' Non usare questo strumento: consulta l\'elenco ufficiale.</div>';
+  if(meta.sample) h+='<div class="banner b-err"><b>DATI DI PROVA.</b> Non collegato al foglio. Non usare per decisioni reali.</div>';
+  if(meta.stale) h+='<div class="banner b-warn"><b>Offline.</b> Mostro la copia salvata il '+esc(fmt(meta.cachedAt))+'. Potrebbe essere superata.</div>';
+  if(meta.updated){
+    const days = Math.floor((today0()-meta.updated)/864e5);
+    if(days > STALE_DAYS) h+='<div class="banner b-warn"><b>Elenco fermo da '+days+' giorni</b> (aggiornato al '+esc(fmt(meta.updated))+'). Verifica che sia ancora valido.</div>';
+    else h+='<div class="banner b-ok">Elenco aggiornato al <b>'+esc(fmt(meta.updated))+'</b></div>';
+  } else if(!meta.sample) h+='<div class="banner b-warn">Data di aggiornamento non indicata nel foglio.</div>';
+  if(meta.skipped.length) h+='<div class="banner b-warn"><b>'+meta.skipped.length+' righe ignorate</b> (controlla il foglio): '+esc(meta.skipped.join('; '))+'</div>';
+  return h;
+}
+
+const opt = (a,v,label,sub,cls) => '<button class="opt '+(cls||'')+'" data-a="'+a+'" data-v="'+esc(v)+'" data-k="'+esc(key(label))+'"><span>'+esc(label)+'</span>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</button>';
+const navbar = () => '<div class="nav"><button class="link" data-a="back">‹ Indietro</button><button class="link" data-a="reset">Ricomincia</button></div>';
+const searchBox = n => n>6 ? '<input class="q" id="q" type="search" placeholder="Cerca…" autocomplete="off" autocapitalize="none" autocorrect="off">' : '';
+
+function nationScreen(){
+  const A = active(); const ns = uniq(A.map(r=>r.nazione));
+  return '<h2>Dove è stato il donatore?</h2><p class="sub">Seleziona il Paese. Se non è in elenco, non risultano sospensioni.</p>'
+    + ns.map(n => { const c=A.filter(r=>key(r.nazione)==key(n)).length; return opt('nation', n, n, c+(c==1?' area':' aree')); }).join('')
+    + opt('none','','Altro Paese / nessuno di questi','', 'ghost');
+}
+
+function provScreen(){
+  const A = active().filter(r=>key(r.nazione)==key(st.nazione));
+  const ps = uniq(A.map(r=>r.provincia)).sort((a,b)=>a.localeCompare(b,'it'));
+  return navbar()+'<h2>'+esc(st.nazione)+': quale provincia?</h2><p class="sub">Solo le province con sospensioni attive.</p>'
+    + searchBox(ps.length)
+    + '<div id="list">'+ps.map(p=>{
+        const rs=A.filter(r=>key(r.provincia)==key(p));
+        const whole=rs.some(r=>!r.comune);
+        const nc=uniq(rs.filter(r=>r.comune).map(r=>r.comune)).length;
+        return opt('prov', p, p, whole?'intero territorio':nc+(nc==1?' comune':' comuni'));
+      }).join('')+'</div>'
+    + opt('otherprov','','Altra provincia (non in elenco)','', 'ghost');
+}
+
+function comScreen(){
+  const A = active().filter(r=>key(r.nazione)==key(st.nazione)&&key(r.provincia)==key(st.provincia)&&r.comune);
+  const cs = uniq(A.map(r=>r.comune)).sort((a,b)=>a.localeCompare(b,'it'));
+  return navbar()+'<h2>Provincia di '+esc(st.provincia)+': quale comune?</h2><p class="sub">Solo i comuni con sospensione attiva.</p>'
+    + searchBox(cs.length)
+    + '<div id="list">'+cs.map(c=>opt('com', c, c, '')).join('')+'</div>'
+    + opt('othercom','','Un altro comune della provincia','', 'ghost');
+}
+
+function stayCalc(){
+  const r = st.res; if(!r || r.type!=='red') return '';
+  if(!st.stay) return '';
+  const d = parseDate(st.stay); if(!d) return '';
+  const da = r.da ? new Date(r.da) : null;
+  if(da && d < da) return '<b>Il soggiorno è precedente</b> all\'attivazione ('+esc(fmt(da))+'): non rientra in questa sospensione. Verifica sempre sul foglio.';
+  const e = new Date(d.getFullYear(), d.getMonth(), d.getDate()+GIORNI);
+  return 'Fine dei '+GIORNI+' giorni: <b>'+esc(fmt(e))+'</b><br><span style="color:var(--muted);font-size:14px">Il giorno esatto di riammissione segue il protocollo del servizio.</span>';
+}
+
+function resScreen(){
+  const r = st.res; const upd = meta.updated ? ' Verifica basata sull\'elenco aggiornato al '+esc(fmt(meta.updated))+'.' : '';
+  if(r.type==='red'){
+    return navbar()+'<div class="res red"><div class="big">Sospensione attiva</div><div class="area">'+esc(r.area)+'</div>'
+      +'<p>Non può donare per <b>'+GIORNI+' giorni</b> dall\'ultimo giorno di permanenza, anche di poche ore.</p>'
+      +(r.da?'<p>Sospensione attiva dal <b>'+esc(fmt(new Date(r.da)))+'</b>.</p>':'')+'</div>'
+      +'<div class="card"><label for="stay">Ultimo giorno nell\'area (facoltativo)</label><input type="date" id="stay" value="'+esc(st.stay)+'"><div class="out" id="stayout">'+stayCalc()+'</div></div>'
+      +'<button class="opt" data-a="reset"><span>Nuovo donatore</span></button>';
+  }
+  return navbar()+'<div class="res green"><div class="big">Nessuna sospensione</div><div class="area">'+esc(r.area)+'</div><p>'+esc(r.msg)+'</p></div>'
+    +'<p class="foot">'+upd.trim()+' Un esito verde significa solo "non risulta in elenco".</p>'
+    +'<button class="opt" data-a="reset"><span>Nuovo donatore</span></button>';
+}
+
+function render(){
+  let h = '<h1>Sospensioni donatori</h1>' + banners();
+  if(meta.error){ $app.innerHTML = h; return; }
+  if(st.step==='nation') h+=nationScreen();
+  else if(st.step==='prov') h+=provScreen();
+  else if(st.step==='com') h+=comScreen();
+  else h+=resScreen();
+  $app.innerHTML = h;
+}
+
+// ====== AZIONI ======
+const red = (area, row) => ({type:'red', area, da: row && row.da ? row.da.getTime() : null});
+$app.addEventListener('click', e => {
+  const b = e.target.closest('[data-a]'); if(!b) return;
+  const a=b.dataset.a, v=b.dataset.v;
+  if(a==='back') return back();
+  if(a==='reset') return reset();
+  if(a==='nation') return nav({step:'prov', nazione:v});
+  if(a==='none') return nav({step:'res', res:{type:'green', area:'Altro Paese', msg:'Il Paese non risulta tra quelli con sospensioni attive.'}});
+  if(a==='prov'){
+    const rs = active().filter(r=>key(r.nazione)==key(st.nazione)&&key(r.provincia)==key(v));
+    const whole = rs.find(r=>!r.comune);
+    if(whole) return nav({provincia:v, step:'res', res:red(st.nazione+' › '+v+' (intero territorio)', whole)});
+    return nav({step:'com', provincia:v});
+  }
+  if(a==='otherprov') return nav({step:'res', res:{type:'green', area:st.nazione+' › altra provincia', msg:'La provincia non risulta tra quelle con sospensioni attive in '+st.nazione+'.'}});
+  if(a==='com'){
+    const row = active().find(r=>key(r.nazione)==key(st.nazione)&&key(r.provincia)==key(st.provincia)&&key(r.comune)==key(v));
+    return nav({step:'res', res:red(st.nazione+' › '+st.provincia+' › '+v, row)});
+  }
+  if(a==='othercom') return nav({step:'res', res:{type:'green', area:st.nazione+' › '+st.provincia+' › altro comune', msg:'Il comune non risulta tra quelli sospesi nella provincia di '+st.provincia+'.'}});
+});
+$app.addEventListener('input', e => {
+  if(e.target.id==='q'){
+    const q=key(e.target.value);
+    document.querySelectorAll('#list .opt').forEach(o => o.hidden = q && !o.dataset.k.includes(q));
+  }
+  if(e.target.id==='stay'){
+    st.stay = e.target.value;
+    document.getElementById('stayout').innerHTML = stayCalc();
+  }
+});
+
+load().then(render);
+</script>
+</body>
+</html>
