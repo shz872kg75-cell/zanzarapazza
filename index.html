@@ -52,22 +52,25 @@ const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRINcvYDi
 const GIORNI = 28;
 const STALE_DAYS = 14; // oltre questa soglia l'elenco viene segnalato come non aggiornato
 
-const SAMPLE_CSV = `Nazione,Provincia,Comune,Attiva dal,Fino al,Aggiornato al
-Italia,Lecce,Alliste,2026-08-28,,2026-10-24
-Italia,Lecce,Ugento,2026-08-28,,
-Italia,Lecce,Taurisano,2026-10-09,,
-Italia,Livorno,Piombino,2026-08-31,,
-Italia,Roma,Roma,2026-09-04,,
-Italia,Napoli,Ischia,2026-09-21,,
-Italia,Firenze,Campi Bisenzio,2026-09-21,,
-Italia,Firenze,Signa,2026-09-21,,
-Italia,Vicenza,Cartigliano,2026-09-25,,
-Francia,Lot,,2026-08-28,,
-Francia,Val della marna,,2026-08-28,,
-Francia,Marsiglia,,2026-08-28,,
-Francia,Landes,,2026-10-23,,
-Francia,Pirenei atlantici,,2026-10-23,,
-Francia,Var,,2026-10-23,,`;
+// Layout del foglio: colonne A-D = Nazione, Provincia, Comune, Attiva dal.
+// La data di aggiornamento sta nella riga 1: "Aggiornato al" nella cella E1 e la data in F1.
+// Così non dipende da nessuna zona e non sparisce quando si elimina una riga.
+const SAMPLE_CSV = `Nazione,Provincia,Comune,Attiva dal,Aggiornato al,2026-10-24
+Italia,Lecce,Alliste,2026-08-28
+Italia,Lecce,Ugento,2026-08-28
+Italia,Lecce,Taurisano,2026-10-09
+Italia,Livorno,Piombino,2026-08-31
+Italia,Roma,Roma,2026-09-04
+Italia,Napoli,Ischia,2026-09-21
+Italia,Firenze,Campi Bisenzio,2026-09-21
+Italia,Firenze,Signa,2026-09-21
+Italia,Vicenza,Cartigliano,2026-09-25
+Francia,Lot,,2026-08-28
+Francia,Val della marna,,2026-08-28
+Francia,Marsiglia,,2026-08-28
+Francia,Landes,,2026-10-23
+Francia,Pirenei atlantici,,2026-10-23
+Francia,Var,,2026-10-23`;
 
 // ====== UTILITÀ ======
 const $app = document.getElementById('app');
@@ -111,20 +114,23 @@ function buildRows(text){
   if(t.length < 2) throw new Error('Foglio vuoto');
   const h = t[0].map(key);
   const ix = p => h.findIndex(x => x.startsWith(p));
-  const I = {n:ix('nazion'), p:ix('provinc'), c:ix('comun'), da:ix('attiva'), a:ix('fino'), u:ix('aggiornat')};
+  const I = {n:ix('nazion'), p:ix('provinc'), c:ix('comun'), da:ix('attiva'), u:ix('aggiornat')};
   if(I.n<0||I.p<0||I.c<0||I.da<0) throw new Error('Intestazioni mancanti: servono Nazione, Provincia, Comune, Attiva dal');
   const out=[]; meta.skipped=[]; meta.updated=null;
+  // Data di aggiornamento globale: nella riga 1, nella cella subito dopo "Aggiornato al".
+  if(I.u>=0){ const u=parseDate((t[0][I.u+1]||'').trim()); if(u) meta.updated=u; }
   t.slice(1).forEach((r,i) => {
     const g = k => (k>=0 ? (r[k]||'').trim() : '');
     const n=g(I.n), p=g(I.p), c=g(I.c);
+    // Compatibilità con il vecchio layout (data sotto l'intestazione "Aggiornato al")
     if(I.u>=0 && !meta.updated){ const u=parseDate(g(I.u)); if(u) meta.updated=u; }
     if(!n && !p && !c) return;
-    const da=parseDate(g(I.da)), a=parseDate(g(I.a));
-    if(!n || !p || da===undefined || a===undefined){
+    const da=parseDate(g(I.da));
+    if(!n || !p || da===undefined){
       meta.skipped.push('riga '+(i+2)+(p?' ('+p+(c?' / '+c:'')+')':'')+(!n?': Nazione mancante':': data non valida'));
       return;
     }
-    out.push({nazione:n, provincia:p, comune:c==='-'?'':c, da, a});
+    out.push({nazione:n, provincia:p, comune:c==='-'?'':c, da});
   });
   return out;
 }
@@ -151,7 +157,7 @@ async function load(){
   if(text){ try{ rows = buildRows(text); }catch(e){ meta.error = 'Elenco non leggibile: '+e.message; } }
 }
 
-const active = () => { const t=today0(); return rows.filter(r => !(r.a && r.a < t)); };
+const active = () => rows; // una riga presente nel foglio = sospensione attiva; terminata = riga eliminata
 const uniq = arr => { const s=new Set(), o=[]; arr.forEach(x=>{ if(!s.has(key(x))){ s.add(key(x)); o.push(x);} }); return o; };
 
 // ====== STATO / NAVIGAZIONE ======
@@ -182,9 +188,8 @@ const searchBox = n => n>6 ? '<input class="q" id="q" type="search" placeholder=
 
 function nationScreen(){
   const A = active(); const ns = uniq(A.map(r=>r.nazione));
-  return '<h2>Dove è stato il donatore?</h2><p class="sub">Seleziona il Paese. Se non è in elenco, non risultano sospensioni.</p>'
-    + ns.map(n => { const c=A.filter(r=>key(r.nazione)==key(n)).length; return opt('nation', n, n, c+(c==1?' area':' aree')); }).join('')
-    + opt('none','','Altro Paese / nessuno di questi','', 'ghost');
+  return '<h2>Dove è stato il donatore?</h2><p class="sub">Solo i Paesi con sospensioni attive.</p>'
+    + ns.map(n => { const c=A.filter(r=>key(r.nazione)==key(n)).length; return opt('nation', n, n, c+(c==1?' area':' aree')); }).join('');
 }
 
 function provScreen(){
@@ -252,7 +257,6 @@ $app.addEventListener('click', e => {
   if(a==='back') return back();
   if(a==='reset') return reset();
   if(a==='nation') return nav({step:'prov', nazione:v});
-  if(a==='none') return nav({step:'res', res:{type:'green', area:'Altro Paese', msg:'Il Paese non risulta tra quelli con sospensioni attive.'}});
   if(a==='prov'){
     const rs = active().filter(r=>key(r.nazione)==key(st.nazione)&&key(r.provincia)==key(v));
     const whole = rs.find(r=>!r.comune);
