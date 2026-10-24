@@ -35,6 +35,8 @@ h2{font-size:26px;line-height:1.15;margin:14px 2px 6px}
 .res .area{font-size:19px;font-weight:600;margin:0 0 6px;color:var(--text)}
 .res p{margin:4px 0;color:var(--text);font-size:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 12px}
+.card.ok{background:var(--greenbg);border-color:var(--green)}
+.card.ok .out{color:var(--green)}
 .card label{display:block;font-weight:600;margin-bottom:8px}
 .card input[type=date]{width:100%;min-height:46px;font:inherit;font-size:17px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
 .out{margin-top:10px;font-size:16px}
@@ -48,7 +50,7 @@ h2{font-size:26px;line-height:1.15;margin:14px 2px 6px}
 // ====== CONFIGURAZIONE ======
 // Incolla qui il link CSV di Google Fogli ("Pubblica sul web" > CSV).
 // Se resta vuoto, l'app usa i dati di prova incorporati e lo dichiara in cima a ogni schermata.
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRINcvYDi2xJ9zZiZPBJlPBFlrrkNXzEe80mTlKGWC2QEkGCFZOd-CCHSxwhd08p5CcEsvDqP2heM5m/pub?gid=99299826&single=true&output=csv";
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRINcvYDi2xJ9zZiZPBJlPBFlrrkNXzEe80mTlKGWC2QEkGCFZOd-CCHSxwhd08p5CcEsvDqP2heM5m/pubhtml?gid=99299826&single=true";
 const GIORNI = 28;
 const STALE_DAYS = 14; // oltre questa soglia l'elenco viene segnalato come non aggiornato
 
@@ -202,8 +204,7 @@ function provScreen(){
         const whole=rs.some(r=>!r.comune);
         const nc=uniq(rs.filter(r=>r.comune).map(r=>r.comune)).length;
         return opt('prov', p, p, whole?'intero territorio':nc+(nc==1?' comune':' comuni'));
-      }).join('')+'</div>'
-    + opt('otherprov','','Altra provincia (non in elenco)','', 'ghost');
+      }).join('')+'</div>';
 }
 
 function comScreen(){
@@ -211,8 +212,14 @@ function comScreen(){
   const cs = uniq(A.map(r=>r.comune)).sort((a,b)=>a.localeCompare(b,'it'));
   return navbar()+'<h2>Provincia di '+esc(st.provincia)+': quale comune?</h2><p class="sub">Solo i comuni con sospensione attiva.</p>'
     + searchBox(cs.length)
-    + '<div id="list">'+cs.map(c=>opt('com', c, c, '')).join('')+'</div>'
-    + opt('othercom','','Un altro comune della provincia','', 'ghost');
+    + '<div id="list">'+cs.map(c=>opt('com', c, c, '')).join('')+'</div>';
+}
+
+// true se l'ultimo giorno nell'area indicato precede l'attivazione della sospensione
+function stayBefore(){
+  const r = st.res; if(!r || r.type!=='red' || !st.stay || !r.da) return false;
+  const d = parseDate(st.stay);
+  return !!d && d < new Date(r.da);
 }
 
 function stayCalc(){
@@ -220,7 +227,7 @@ function stayCalc(){
   if(!st.stay) return '';
   const d = parseDate(st.stay); if(!d) return '';
   const da = r.da ? new Date(r.da) : null;
-  if(da && d < da) return '<b>Il soggiorno è precedente</b> all\'attivazione ('+esc(fmt(da))+'): non rientra in questa sospensione. Verifica sempre sul foglio.';
+  if(da && d < da) return '<b>Il soggiorno è precedente</b> all\'attivazione ('+esc(fmt(da))+'): non rientra in questa sospensione.';
   const e = new Date(d.getFullYear(), d.getMonth(), d.getDate()+GIORNI);
   return 'Fine dei '+GIORNI+' giorni: <b>'+esc(fmt(e))+'</b><br><span style="color:var(--muted);font-size:14px">Il giorno esatto di riammissione segue il protocollo del servizio.</span>';
 }
@@ -231,12 +238,10 @@ function resScreen(){
     return navbar()+'<div class="res red"><div class="big">Sospensione attiva</div><div class="area">'+esc(r.area)+'</div>'
       +'<p>Non può donare per <b>'+GIORNI+' giorni</b> dall\'ultimo giorno di permanenza, anche di poche ore.</p>'
       +(r.da?'<p>Sospensione attiva dal <b>'+esc(fmt(new Date(r.da)))+'</b>.</p>':'')+'</div>'
-      +'<div class="card"><label for="stay">Ultimo giorno nell\'area (facoltativo)</label><input type="date" id="stay" value="'+esc(st.stay)+'"><div class="out" id="stayout">'+stayCalc()+'</div></div>'
-      +'<button class="opt" data-a="reset"><span>Nuovo donatore</span></button>';
+      +'<div class="card'+(stayBefore()?' ok':'')+'" id="staycard"><label for="stay">Ultimo giorno nell\'area (facoltativo)</label><input type="date" id="stay" value="'+esc(st.stay)+'"><div class="out" id="stayout">'+stayCalc()+'</div></div>';
   }
   return navbar()+'<div class="res green"><div class="big">Nessuna sospensione</div><div class="area">'+esc(r.area)+'</div><p>'+esc(r.msg)+'</p></div>'
-    +'<p class="foot">'+upd.trim()+' Un esito verde significa solo "non risulta in elenco".</p>'
-    +'<button class="opt" data-a="reset"><span>Nuovo donatore</span></button>';
+    +'<p class="foot">'+upd.trim()+' Un esito verde significa solo "non risulta in elenco".</p>';
 }
 
 function render(){
@@ -263,12 +268,10 @@ $app.addEventListener('click', e => {
     if(whole) return nav({provincia:v, step:'res', res:red(st.nazione+' › '+v+' (intero territorio)', whole)});
     return nav({step:'com', provincia:v});
   }
-  if(a==='otherprov') return nav({step:'res', res:{type:'green', area:st.nazione+' › altra provincia', msg:'La provincia non risulta tra quelle con sospensioni attive in '+st.nazione+'.'}});
   if(a==='com'){
     const row = active().find(r=>key(r.nazione)==key(st.nazione)&&key(r.provincia)==key(st.provincia)&&key(r.comune)==key(v));
     return nav({step:'res', res:red(st.nazione+' › '+st.provincia+' › '+v, row)});
   }
-  if(a==='othercom') return nav({step:'res', res:{type:'green', area:st.nazione+' › '+st.provincia+' › altro comune', msg:'Il comune non risulta tra quelli sospesi nella provincia di '+st.provincia+'.'}});
 });
 $app.addEventListener('input', e => {
   if(e.target.id==='q'){
@@ -278,6 +281,7 @@ $app.addEventListener('input', e => {
   if(e.target.id==='stay'){
     st.stay = e.target.value;
     document.getElementById('stayout').innerHTML = stayCalc();
+    document.getElementById('staycard').classList.toggle('ok', stayBefore());
   }
 });
 
